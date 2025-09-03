@@ -545,7 +545,31 @@ class FinancialClassifierApp:
         
         ## 👨‍💻 Auteur
         
-        Développé dans le cadre d'un projet de data science appliquée à la finance.
+        **Built by Amine Rahmani**
+        
+        ### 🔗 Liens
+        - **GitHub Repository** : [https://github.com/Amine-Rahmanii/financial-instruments-classifier](https://github.com/Amine-Rahmanii/financial-instruments-classifier)
+        - **LinkedIn** : [Amine Rahmani](https://linkedin.com/in/amine-rahmani)
+        
+        ### 🛠️ Technologies utilisées
+        - **Python** : Langage de programmation principal
+        - **Scikit-learn** : Framework de machine learning
+        - **XGBoost & LightGBM** : Modèles de gradient boosting
+        - **Pandas & NumPy** : Manipulation et analyse de données
+        - **Streamlit** : Framework pour applications web interactives
+        - **Plotly** : Visualisations interactives et dashboards
+        - **Matplotlib & Seaborn** : Visualisations statiques
+        - **yfinance** : API pour données financières Yahoo Finance
+        
+        ### 📊 Résultats techniques
+        - **4 modèles ML** entraînés et comparés
+        - **43 features** d'ingénierie financière
+        - **45,000 observations** sur 2 ans de données réelles
+        - **100% de précision** sur Random Forest, XGBoost et LightGBM
+        
+        ---
+        
+        *Projet développé dans le cadre d'une candidature pour un stage en Data Science / Finance Quantitative.*
         """)
     
     def display_home(self):
@@ -593,7 +617,22 @@ class FinancialClassifierApp:
         - ✅ Interface interactive pour les prédictions
         - ✅ Visualisations interactives des performances
         - ✅ Analyse exploratoire des données
+        
+        ---
+        
+        ### 👨‍💻 Built by **Amine Rahmani**
+        📂 **GitHub** : [https://github.com/Amine-Rahmanii/financial-instruments-classifier](https://github.com/Amine-Rahmanii/financial-instruments-classifier)
         """)
+        
+        # Note technique en bas
+        st.markdown("""
+        <div style='margin-top: 2rem; padding: 1rem; background-color: #f0f2f6; border-radius: 0.5rem; border-left: 4px solid #1f77b4;'>
+        <small>
+        <strong>🔧 Stack technique :</strong> Python • Scikit-learn • XGBoost • LightGBM • Streamlit • Plotly • yfinance<br>
+        <strong>📊 Données :</strong> 45,000 observations • 90 instruments • 43 features • 2 ans de données Yahoo Finance
+        </small>
+        </div>
+        """, unsafe_allow_html=True)
     
     def run(self):
         """Lance l'application"""
