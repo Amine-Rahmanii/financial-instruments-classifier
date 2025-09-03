@@ -282,8 +282,50 @@ class FinancialClassifierApp:
     
     def calculate_features_from_data(self, data):
         """Calcule les features à partir des données de prix"""
-        # Version simplifiée du feature engineering
-        
+        try:
+            # Préparer les données au format attendu
+            df = data.reset_index()
+            df.columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
+            df['Symbol'] = 'TEMP'
+            df['Type'] = 'temp'
+            df['Label'] = 0
+            
+            # Utiliser le même feature engineering que lors de l'entraînement
+            from src.feature_engineering import FinancialFeatureEngineer
+            
+            feature_engineer = FinancialFeatureEngineer()
+            
+            # Appliquer toutes les transformations
+            df = feature_engineer.calculate_returns(df)
+            df = feature_engineer.calculate_volatility(df)
+            df = feature_engineer.calculate_moving_averages(df)
+            df = feature_engineer.calculate_volume_features(df)
+            df = feature_engineer.calculate_price_features(df)
+            df = feature_engineer.calculate_technical_indicators(df)
+            df = feature_engineer.calculate_momentum_features(df)
+            
+            # Prendre la dernière ligne (données les plus récentes)
+            latest_row = df.iloc[-1]
+            
+            # Extraire les features dans le bon ordre
+            feature_list = []
+            for feature_name in self.feature_names:
+                if feature_name in latest_row:
+                    value = latest_row[feature_name]
+                    # Remplacer NaN par 0
+                    feature_list.append(0 if pd.isna(value) else value)
+                else:
+                    feature_list.append(0)
+            
+            return feature_list
+            
+        except Exception as e:
+            st.warning(f"Erreur lors du calcul des features: {e}")
+            # Fallback vers la version simplifiée
+            return self.calculate_features_simple(data)
+    
+    def calculate_features_simple(self, data):
+        """Version simplifiée du calcul de features (fallback)"""
         # Calculs de base
         data['Daily_Return'] = data['Close'].pct_change()
         data['Volatility_20d'] = data['Daily_Return'].rolling(20).std()
@@ -303,8 +345,7 @@ class FinancialClassifierApp:
             latest['Volume'] / latest['Volume_MA_20d'] if not pd.isna(latest['Volume_MA_20d']) else 1,
         ]
         
-        # Ajouter des features supplémentaires pour correspondre au modèle
-        # (Version simplifiée - en production, il faudrait calculer toutes les features)
+        # Compléter avec des zéros
         while len(features) < len(self.feature_names):
             features.append(0)
         
