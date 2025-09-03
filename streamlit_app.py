@@ -329,7 +329,23 @@ class FinancialClassifierApp:
         try:
             # Préparer les données au format attendu
             df = data.reset_index()
-            df.columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'Dividends', 'Stock Splits']
+            
+            # Vérification dynamique des colonnes
+            expected_cols = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
+            
+            # Yahoo Finance peut avoir des colonnes optionnelles
+            if 'Dividends' in df.columns:
+                expected_cols.append('Dividends')
+            else:
+                df['Dividends'] = 0.0
+                
+            if 'Stock Splits' in df.columns:
+                expected_cols.append('Stock Splits')
+            else:
+                df['Stock Splits'] = 0.0
+            
+            # Réorganiser les colonnes de base
+            base_cols = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'Dividends', 'Stock Splits']
             
             # Ajouter les colonnes manquantes pour correspondre aux données d'entraînement
             df['Symbol'] = 'TEMP'
@@ -379,7 +395,14 @@ class FinancialClassifierApp:
             
         except Exception as e:
             st.warning(f"⚠️ Erreur lors du calcul des features avancées: {e}")
-            st.info("🔄 Basculement vers le mode de features simplifiées")
+            st.info("� Détails de debug:")
+            st.code(f"""
+Colonnes reçues: {list(data.columns)}
+Nombre de colonnes: {len(data.columns)}
+Index: {data.index.name}
+Forme des données: {data.shape}
+            """)
+            st.info("�🔄 Basculement vers le mode de features simplifiées")
             return self.calculate_features_simple(data, info)
     
     def calculate_features_simple(self, data, info=None):
