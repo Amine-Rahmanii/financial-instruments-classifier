@@ -286,10 +286,11 @@ class FinancialClassifierApp:
                             # Télécharger les données
                             ticker = yf.Ticker(symbol)
                             data = ticker.history(period="1y")
+                            info = ticker.info  # Données fondamentales
                             
                             if len(data) > 0:
-                                # Calculer les features (version simplifiée)
-                                features = self.calculate_features_from_data(data)
+                                # Calculer les features (version complète avec info)
+                                features = self.calculate_features_from_data(data, info)
                                 
                                 # Faire la prédiction avec tous les modèles
                                 predictions = {}
@@ -305,6 +306,7 @@ class FinancialClassifierApp:
                                     st.write(f"**Nombre de features calculées:** {len(features)}")
                                     st.write(f"**Nombre de features attendues:** {len(self.feature_names)}")
                                     st.write(f"**Feature engineering avancé:** {'✅' if FEATURE_ENGINEERING_AVAILABLE else '❌'}")
+                                    st.write(f"**Données fondamentales:** {'✅' if info else '❌'}")
                                     if len(features) <= 10:
                                         st.write(f"**Premières features:** {features}")
                                 
@@ -318,11 +320,11 @@ class FinancialClassifierApp:
                         except Exception as e:
                             st.error(f"❌ Erreur lors du téléchargement: {e}")
     
-    def calculate_features_from_data(self, data):
-        """Calcule les features à partir des données de prix"""
+    def calculate_features_from_data(self, data, info=None):
+        """Calcule les features à partir des données de prix et info fondamentales"""
         if not FEATURE_ENGINEERING_AVAILABLE:
             st.warning("⚠️ Utilisation du mode de features simplifiées")
-            return self.calculate_features_simple(data)
+            return self.calculate_features_simple(data, info)
             
         try:
             # Préparer les données au format attendu
@@ -351,7 +353,17 @@ class FinancialClassifierApp:
             df = feature_engineer.calculate_momentum_features(df)
             
             # Prendre la dernière ligne (données les plus récentes)
-            latest_row = df.iloc[-1]
+            latest_row = df.iloc[-1].copy()
+            
+            # Ajouter les données fondamentales de Yahoo Finance info
+            if info:
+                latest_row['MarketCap'] = info.get('marketCap', 0)
+                latest_row['Beta'] = info.get('beta', 1.0)
+                latest_row['PE_Ratio'] = info.get('trailingPE', 0)
+                latest_row['DividendYield'] = info.get('dividendYield', 0)
+                latest_row['Volume_Avg'] = info.get('averageVolume', latest_row.get('Volume', 0))
+                latest_row['Price52WeekHigh'] = info.get('fiftyTwoWeekHigh', latest_row.get('Close', 0))
+                latest_row['Price52WeekLow'] = info.get('fiftyTwoWeekLow', latest_row.get('Close', 0))
             
             # Extraire les features dans le bon ordre
             feature_list = []
@@ -368,9 +380,9 @@ class FinancialClassifierApp:
         except Exception as e:
             st.warning(f"⚠️ Erreur lors du calcul des features avancées: {e}")
             st.info("🔄 Basculement vers le mode de features simplifiées")
-            return self.calculate_features_simple(data)
+            return self.calculate_features_simple(data, info)
     
-    def calculate_features_simple(self, data):
+    def calculate_features_simple(self, data, info=None):
         """Version simplifiée du calcul de features (fallback)"""
         # Calculs de base
         data['Daily_Return'] = data['Close'].pct_change()
@@ -384,16 +396,35 @@ class FinancialClassifierApp:
         
         # Créer un vecteur de features (version simplifiée)
         features = [
+            0, 0, 0,  # Dividends, Stock Splits, Capital Gains
             latest['Daily_Return'] if not pd.isna(latest['Daily_Return']) else 0,
             latest['Volatility_20d'] if not pd.isna(latest['Volatility_20d']) else 0,
+            0, 0,  # Volatility_10d, autre
+            latest['MA_20d'] if not pd.isna(latest['MA_20d']) else latest['Close'],
             latest['Close'] / latest['MA_20d'] if not pd.isna(latest['MA_20d']) else 1,
-            latest['Close'] / latest['MA_50d'] if not pd.isna(latest['MA_50d']) else 1,
+            0, 0, 0, 0, 0,  # Autres MA
             latest['Volume'] / latest['Volume_MA_20d'] if not pd.isna(latest['Volume_MA_20d']) else 1,
         ]
         
-        # Compléter avec des zéros
-        while len(features) < len(self.feature_names):
+        # Ajouter les données fondamentales si disponibles
+        if info:
+            # Continuer avec les vraies valeurs
+            market_cap = info.get('marketCap', 0)
+            beta = info.get('beta', 1.0)
+            pe_ratio = info.get('trailingPE', 0)
+            div_yield = info.get('dividendYield', 0)
+            volume_avg = info.get('averageVolume', latest['Volume'])
+            high_52w = info.get('fiftyTwoWeekHigh', latest['Close'])
+            low_52w = info.get('fiftyTwoWeekLow', latest['Close'])
+        else:
+            market_cap = beta = pe_ratio = div_yield = volume_avg = high_52w = low_52w = 0
+        
+        # Compléter avec des zéros et ajouter les vraies valeurs importantes à la fin
+        while len(features) < len(self.feature_names) - 7:
             features.append(0)
+        
+        # Ajouter les features importantes à la fin
+        features.extend([market_cap, beta, pe_ratio, div_yield, volume_avg, high_52w, low_52w])
         
         return features[:len(self.feature_names)]
     
