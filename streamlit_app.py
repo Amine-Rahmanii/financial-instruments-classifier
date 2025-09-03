@@ -310,9 +310,22 @@ class FinancialClassifierApp:
                                     if len(features) <= 10:
                                         st.write(f"**Premières features:** {features}")
                                 
+                                # Appliquer l'amélioration avec métadonnées
+                                refined_predictions = {}
+                                for model_name, pred_data in predictions.items():
+                                    pred, proba = pred_data['prediction'], pred_data['probabilities']
+                                    refined_pred, refined_proba = self.refine_prediction_with_metadata(
+                                        symbol, pred, proba, info
+                                    )
+                                    refined_predictions[model_name] = {
+                                        'prediction': refined_pred,
+                                        'probabilities': refined_proba,
+                                        'original_prediction': pred
+                                    }
+                                
                                 # Afficher les résultats
                                 with col2:
-                                    self.display_prediction_results(symbol, predictions)
+                                    self.display_prediction_results(symbol, refined_predictions)
                                 
                             else:
                                 st.error(f"❌ Aucune donnée trouvée pour {symbol}")
@@ -451,6 +464,37 @@ Forme des données: {data.shape}
         
         return features[:len(self.feature_names)]
     
+    def refine_prediction_with_metadata(self, symbol, prediction, probabilities, info):
+        """Affine la prédiction en utilisant les métadonnées Yahoo Finance"""
+        if not info:
+            return prediction, probabilities
+            
+        quote_type = info.get('quoteType', '').upper()
+        category = info.get('category', '').lower()
+        fund_family = info.get('fundFamily', '').lower()
+        long_name = info.get('longName', '').lower()
+        
+        st.write(f"🔍 **Métadonnées pour {symbol}:**")
+        st.write(f"- Type: {quote_type}")
+        st.write(f"- Catégorie: {category}")
+        st.write(f"- Famille de fonds: {fund_family}")
+        
+        # Si le modèle prédit ETF, on peut préciser s'il s'agit d'un ETF obligataire
+        if prediction == 1:  # ETF prédit
+            # Indices d'ETF obligataires
+            bond_keywords = ['bond', 'treasury', 'government', 'corporate', 'municipal', 'tip', 'debt', 'fixed income']
+            
+            if any(keyword in category for keyword in bond_keywords) or any(keyword in long_name for keyword in bond_keywords):
+                st.success(f"✅ **Reclassification:** {symbol} détecté comme ETF obligataire basé sur '{category}'")
+                return 2, probabilities  # Reclasser comme Obligation
+                
+        # Si c'est clairement une action mais classée autrement
+        if quote_type == 'EQUITY' and prediction != 0:
+            st.success(f"✅ **Correction:** {symbol} reclassé comme Action (quoteType=EQUITY)")
+            return 0, probabilities  # Reclasser comme Action
+            
+        return prediction, probabilities
+    
     def display_manual_prediction(self):
         """Interface de saisie manuelle"""
         st.info("💡 Entrez les principales métriques financières pour obtenir une prédiction.")
@@ -534,11 +578,21 @@ Forme des données: {data.shape}
                 pred_label = self.label_names[result['prediction']]
                 max_proba = np.max(result['probabilities'])
                 
-                st.metric(
-                    label=model_name.replace('_', ' ').title(),
-                    value=pred_label,
-                    delta=f"{max_proba:.1%}"
-                )
+                # Afficher correction si applicable
+                if 'original_prediction' in result and result['original_prediction'] != result['prediction']:
+                    original_label = self.label_names[result['original_prediction']]
+                    st.metric(
+                        label=model_name.replace('_', ' ').title(),
+                        value=f"{pred_label} ✨",
+                        delta=f"Corrigé de {original_label}"
+                    )
+                    st.caption(f"Confiance: {max_proba:.1%}")
+                else:
+                    st.metric(
+                        label=model_name.replace('_', ' ').title(),
+                        value=pred_label,
+                        delta=f"{max_proba:.1%}"
+                    )
             
             with col2:
                 # Graphique des probabilités
