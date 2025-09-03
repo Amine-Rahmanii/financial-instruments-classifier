@@ -14,6 +14,19 @@ import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 import yfinance as yf
 import warnings
+import sys
+import os
+
+# Ajouter le répertoire racine au path pour les imports
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+try:
+    from src.feature_engineering import FinancialFeatureEngineer
+    FEATURE_ENGINEERING_AVAILABLE = True
+except ImportError as e:
+    st.warning(f"⚠️ Feature engineering module non disponible: {e}")
+    FEATURE_ENGINEERING_AVAILABLE = False
+
 warnings.filterwarnings('ignore')
 
 # Configuration de la page
@@ -198,6 +211,14 @@ class FinancialClassifierApp:
     
     def predict_instrument(self, features, model_name='random_forest'):
         """Fait une prédiction sur un instrument"""
+        # Vérification de la cohérence des features
+        if len(features) != len(self.feature_names):
+            st.error(f"❌ Erreur: {len(features)} features fournies mais {len(self.feature_names)} attendues")
+            return None, None
+            
+        # Vérification des valeurs infinies/NaN
+        features = [0 if (pd.isna(x) or np.isinf(x)) else x for x in features]
+        
         models = {
             'random_forest': self.rf_model,
             'xgboost': self.xgb_model,
@@ -205,18 +226,27 @@ class FinancialClassifierApp:
             'logistic_regression': self.lr_model
         }
         
+        if model_name not in models:
+            st.error(f"❌ Modèle {model_name} non disponible")
+            return None, None
+            
         model = models[model_name]
         
-        # Préparer les features
-        if model_name == 'logistic_regression':
-            features_scaled = self.scaler.transform([features])
-            prediction = model.predict(features_scaled)[0]
-            probabilities = model.predict_proba(features_scaled)[0]
-        else:
-            prediction = model.predict([features])[0]
-            probabilities = model.predict_proba([features])[0]
-        
-        return prediction, probabilities
+        try:
+            # Préparer les features
+            if model_name == 'logistic_regression':
+                features_scaled = self.scaler.transform([features])
+                prediction = model.predict(features_scaled)[0]
+                probabilities = model.predict_proba(features_scaled)[0]
+            else:
+                prediction = model.predict([features])[0]
+                probabilities = model.predict_proba([features])[0]
+            
+            return prediction, probabilities
+            
+        except Exception as e:
+            st.error(f"❌ Erreur lors de la prédiction avec {model_name}: {e}")
+            return None, None
     
     def display_prediction(self):
         """Interface de prédiction"""
@@ -270,6 +300,14 @@ class FinancialClassifierApp:
                                         'probabilities': proba
                                     }
                                 
+                                # Debug info
+                                with st.expander("🔍 Informations de Debug"):
+                                    st.write(f"**Nombre de features calculées:** {len(features)}")
+                                    st.write(f"**Nombre de features attendues:** {len(self.feature_names)}")
+                                    st.write(f"**Feature engineering avancé:** {'✅' if FEATURE_ENGINEERING_AVAILABLE else '❌'}")
+                                    if len(features) <= 10:
+                                        st.write(f"**Premières features:** {features}")
+                                
                                 # Afficher les résultats
                                 with col2:
                                     self.display_prediction_results(symbol, predictions)
@@ -282,17 +320,25 @@ class FinancialClassifierApp:
     
     def calculate_features_from_data(self, data):
         """Calcule les features à partir des données de prix"""
+        if not FEATURE_ENGINEERING_AVAILABLE:
+            st.warning("⚠️ Utilisation du mode de features simplifiées")
+            return self.calculate_features_simple(data)
+            
         try:
             # Préparer les données au format attendu
             df = data.reset_index()
-            df.columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
+            df.columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'Dividends', 'Stock Splits']
+            
+            # Ajouter les colonnes manquantes pour correspondre aux données d'entraînement
             df['Symbol'] = 'TEMP'
-            df['Type'] = 'temp'
+            df['InstrumentType'] = 'temp'
             df['Label'] = 0
+            df['Capital Gains'] = 0.0  # Ajouter la colonne manquante
+            
+            # Réorganiser les colonnes dans le bon ordre
+            df = df[['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'Dividends', 'Stock Splits', 'Symbol', 'InstrumentType', 'Label', 'Capital Gains']]
             
             # Utiliser le même feature engineering que lors de l'entraînement
-            from src.feature_engineering import FinancialFeatureEngineer
-            
             feature_engineer = FinancialFeatureEngineer()
             
             # Appliquer toutes les transformations
@@ -320,8 +366,8 @@ class FinancialClassifierApp:
             return feature_list
             
         except Exception as e:
-            st.warning(f"Erreur lors du calcul des features: {e}")
-            # Fallback vers la version simplifiée
+            st.warning(f"⚠️ Erreur lors du calcul des features avancées: {e}")
+            st.info("🔄 Basculement vers le mode de features simplifiées")
             return self.calculate_features_simple(data)
     
     def calculate_features_simple(self, data):
@@ -400,8 +446,15 @@ class FinancialClassifierApp:
         """Affiche les résultats de prédiction"""
         st.subheader(f"🎯 Résultats pour {symbol}")
         
+        # Filtrer les prédictions valides
+        valid_predictions = {k: v for k, v in predictions.items() if v['prediction'] is not None}
+        
+        if not valid_predictions:
+            st.error("❌ Aucune prédiction valide obtenue. Veuillez réessayer.")
+            return
+        
         # Vote majoritaire
-        votes = [pred['prediction'] for pred in predictions.values()]
+        votes = [pred['prediction'] for pred in valid_predictions.values()]
         consensus = max(set(votes), key=votes.count)
         confidence = votes.count(consensus) / len(votes)
         
@@ -417,7 +470,10 @@ class FinancialClassifierApp:
         # Détails par modèle
         st.subheader("📊 Détails par Modèle")
         
-        for model_name, result in predictions.items():
+        for model_name, result in valid_predictions.items():
+            if result['prediction'] is None:
+                continue
+                
             col1, col2 = st.columns([1, 2])
             
             with col1:
